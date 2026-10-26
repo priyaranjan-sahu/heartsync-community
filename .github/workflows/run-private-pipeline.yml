@@ -80,7 +80,7 @@ jobs:
         working-directory: ./workspace/backend
         run: |
           echo "Installing backend dependencies..."
-          npm ci
+          npm ci || npm install
 
       - name: Run Backend Automated Test Suite
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_tests == 'true' }}
@@ -94,7 +94,7 @@ jobs:
         working-directory: ./workspace/web
         run: |
           echo "Installing web frontend dependencies..."
-          npm ci
+          npm ci || npm install
           echo "Executing Vite production build..."
           npm run build
 
