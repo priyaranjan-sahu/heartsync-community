@@ -50,6 +50,31 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4-alpine
+        env:
+          POSTGRES_DB: heartsync_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: heartsync_secure_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Resolve Target Branch & Ref
         id: vars
@@ -136,7 +161,12 @@ jobs:
       - name: Run Backend Automated Test Suite
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_tests == 'true' }}
         working-directory: ./workspace/backend
+        env:
+          DATABASE_URL: postgres://postgres:heartsync_secure_test_password@localhost:5432/heartsync_test
+          REDIS_URL: redis://localhost:6379
         run: |
+          echo "Executing HeartSync database schema migration on PostgreSQL 16 + PostGIS..."
+          node scripts/migrate_to_postgres.js
           echo "Executing HeartSync backend unit and integration tests..."
           npm test
 
