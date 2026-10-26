@@ -1,0 +1,113 @@
+name: HeartSync Private Code Runner
+
+on:
+  # Allows manual execution with custom parameters from the GitHub Actions UI
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch or Git ref from private repository to test/build'
+        required: true
+        default: 'main'
+      run_tests:
+        description: 'Run backend unit and integration test suite'
+        required: true
+        type: boolean
+        default: true
+      build_web:
+        description: 'Run React 19 / Vite production build validation'
+        required: true
+        type: boolean
+        default: true
+      test_docker:
+        description: 'Validate Docker Compose service topologies'
+        required: false
+        type: boolean
+        default: false
+
+  # Triggered automatically via webhook dispatch from the private repository
+  repository_dispatch:
+    types: [run-ci, trigger-runner]
+
+  # Optional daily health & regression verification
+  schedule:
+    - cron: '0 3 * * *' # Every day at 03:00 UTC
+
+jobs:
+  execute-private-pipeline:
+    name: Run Private Pipeline on Public Runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Determine Target Branch & Ref
+        id: vars
+        run: |
+          TARGET_REF="${{ github.event.inputs.branch }}"
+          if [ -z "$TARGET_REF" ]; then
+            TARGET_REF="${{ github.event.client_payload.branch }}"
+          fi
+          if [ -z "$TARGET_REF" ]; then
+            TARGET_REF="main"
+          fi
+          echo "target_ref=$TARGET_REF" >> $GITHUB_OUTPUT
+          echo "Trigger source: ${{ github.event_name }}"
+          echo "Target ref to execute: $TARGET_REF"
+
+      - name: Validate Secrets Configuration
+        run: |
+          if [ -z "${{ secrets.PRIVATE_REPO_TOKEN }}" ]; then
+            echo "::error::Missing secret 'PRIVATE_REPO_TOKEN'. Please add a GitHub Personal Access Token (PAT) with read access to the private repository."
+            exit 1
+          fi
+
+      - name: Checkout Private HeartSync Repository
+        uses: actions/checkout@v4
+        with:
+          repository: 'priyaranjan-sahu/heartsync'
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ steps.vars.outputs.target_ref }}
+          path: './workspace'
+          fetch-depth: 1
+
+      - name: Setup Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: './workspace/backend/package.json'
+
+      - name: Install Backend Dependencies
+        working-directory: ./workspace/backend
+        run: |
+          echo "Installing backend dependencies..."
+          npm ci
+
+      - name: Run Backend Automated Test Suite
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.run_tests == 'true' }}
+        working-directory: ./workspace/backend
+        run: |
+          echo "Executing HeartSync backend unit and integration tests..."
+          npm test
+
+      - name: Install Web Dependencies & Build Frontend
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_web == 'true' }}
+        working-directory: ./workspace/web
+        run: |
+          echo "Installing web frontend dependencies..."
+          npm ci
+          echo "Executing Vite production build..."
+          npm run build
+
+      - name: Validate Docker Compose Configuration
+        if: ${{ github.event.inputs.test_docker == 'true' }}
+        working-directory: ./workspace
+        run: |
+          echo "Validating Docker Compose schema..."
+          docker compose config
+
+      - name: Ephemeral Workspace Cleanup
+        if: always()
+        run: |
+          echo "Wiping private code from runner disk..."
+          rm -rf ./workspace
+          echo "Cleanup complete. Zero private artifacts retained on runner."
