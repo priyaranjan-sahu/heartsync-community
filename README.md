@@ -8,7 +8,7 @@ Automated GitHub Actions runner environment engineered to execute continuous int
 
 ```
 ┌─────────────────────────────────┐           ┌────────────────────────────────────────┐
-│  Private Repo (heartsync)       │           │  Public Runner (heartsync-runner)      │
+│  Private Repo (heartsync)       │           │  Public Runner (heartsync-community)   │
 │  - Proprietary source code      │           │  - Zero proprietary code stored       │
 │  - Push / PR triggers webhook   │───POST───▶│  - Free unlimited GitHub runner       │
 └─────────────────────────────────┘           │  - Fetches private code with PAT       │
