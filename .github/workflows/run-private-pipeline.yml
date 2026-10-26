@@ -1,12 +1,14 @@
 name: HeartSync Private Code Runner
+run-name: "CI on [${{ inputs.private_branch || github.event.inputs.private_branch || github.event.inputs.branch || github.event.client_payload.branch || 'main' }}] by @${{ github.actor }}"
 
 on:
   # Allows manual execution with custom parameters from the GitHub Actions UI
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Branch or Git ref from private repository to test/build'
+      private_branch:
+        description: 'Branch, Tag, or Commit SHA from private repo (priyaranjan-sahu/heartsync) to run'
         required: true
+        type: string
         default: 'main'
       run_tests:
         description: 'Run backend unit and integration test suite'
@@ -34,40 +36,74 @@ on:
 
 jobs:
   execute-private-pipeline:
-    name: Run Private Pipeline on Public Runner
+    name: Run Pipeline for ${{ github.event.inputs.private_branch || github.event.inputs.branch || github.event.client_payload.branch || 'main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
-      - name: Determine Target Branch & Ref
+      - name: Resolve Target Branch & Ref
         id: vars
         run: |
-          TARGET_REF="${{ github.event.inputs.branch }}"
-          if [ -z "$TARGET_REF" ]; then
-            TARGET_REF="${{ github.event.client_payload.branch }}"
+          TARGET="${{ github.event.inputs.private_branch }}"
+          if [ -z "$TARGET" ]; then
+            TARGET="${{ github.event.inputs.branch }}"
           fi
-          if [ -z "$TARGET_REF" ]; then
-            TARGET_REF="main"
+          if [ -z "$TARGET" ]; then
+            TARGET="${{ github.event.client_payload.branch }}"
           fi
-          echo "target_ref=$TARGET_REF" >> $GITHUB_OUTPUT
-          echo "Trigger source: ${{ github.event_name }}"
-          echo "Target ref to execute: $TARGET_REF"
+          if [ -z "$TARGET" ]; then
+            TARGET="main"
+          fi
+          # Trim whitespace
+          TARGET=$(echo "$TARGET" | xargs)
+          echo "target_ref=$TARGET" >> $GITHUB_OUTPUT
+          echo "Trigger Source: ${{ github.event_name }}"
+          echo "Target Private Branch / Ref: $TARGET"
 
       - name: Validate Secrets Configuration
         run: |
           if [ -z "${{ secrets.PRIVATE_REPO_TOKEN }}" ]; then
-            echo "::error::Missing secret 'PRIVATE_REPO_TOKEN'. Please add a GitHub Personal Access Token (PAT) with read access to the private repository."
+            echo "::error::Missing secret 'PRIVATE_REPO_TOKEN'. Please ensure the GitHub Personal Access Token (PAT) is configured."
             exit 1
           fi
 
-      - name: Checkout Private HeartSync Repository
+      - name: Checkout Target Branch from Private HeartSync Repo
         uses: actions/checkout@v4
         with:
           repository: 'priyaranjan-sahu/heartsync'
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ steps.vars.outputs.target_ref }}
           path: './workspace'
-          fetch-depth: 1
+          fetch-depth: 5
+
+      - name: Verify Checked-out Code & Commit Metadata
+        working-directory: ./workspace
+        run: |
+          COMMIT_HASH=$(git rev-parse --short HEAD)
+          COMMIT_FULL=$(git rev-parse HEAD)
+          COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1)
+          COMMIT_AUTHOR=$(git log -1 --pretty="%an <%ae>")
+          COMMIT_DATE=$(git log -1 --pretty=%cd --date=iso)
+
+          echo "=================================================="
+          echo " CHECKED OUT PRIVATE CODE METADATA"
+          echo "=================================================="
+          echo "Requested Ref: ${{ steps.vars.outputs.target_ref }}"
+          echo "Commit SHA:    $COMMIT_HASH ($COMMIT_FULL)"
+          echo "Commit Msg:    $COMMIT_MSG"
+          echo "Author:        $COMMIT_AUTHOR"
+          echo "Commit Date:   $COMMIT_DATE"
+          echo "=================================================="
+
+          # Output rich markdown summary to GitHub Actions UI
+          echo "### 🚀 HeartSync Pipeline Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Parameter | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "| :--- | :--- |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Target Branch / Ref** | \`${{ steps.vars.outputs.target_ref }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit SHA** | \`$COMMIT_HASH\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Commit Message** | $COMMIT_MSG |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Author** | $COMMIT_AUTHOR |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Triggered By** | @${{ github.actor }} (${{ github.event_name }}) |" >> $GITHUB_STEP_SUMMARY
 
       - name: Setup Node.js Runtime
         uses: actions/setup-node@v4
@@ -102,7 +138,7 @@ jobs:
         if: ${{ github.event.inputs.test_docker == 'true' }}
         working-directory: ./workspace
         run: |
-          echo "Validating Docker Compose schema..."
+          echo "Validating Docker Compose configuration..."
           docker compose config
 
       - name: Ephemeral Workspace Cleanup
