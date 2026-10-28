@@ -207,10 +207,14 @@ jobs:
           echo "Prebuilding native Android Gradle project via Expo..."
           npx expo prebuild --platform android --clean
 
-          echo "Compiling Standalone Android Test APK..."
+          echo "Configuring Kotlin 1.9.25 in android/build.gradle..."
           cd android
+          sed -i 's/kotlinVersion = .*/kotlinVersion = "1.9.25"/' build.gradle || true
+          echo "android.suppressKotlinVersionCompatibilityCheck=true" >> gradle.properties
+
+          echo "Compiling Standalone Android Test APK..."
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -Pkotlin.compiler.suppressKotlinVersionCompatibilityCheck=true
+          ./gradlew assembleDebug --no-daemon -Pandroid.suppressKotlinVersionCompatibilityCheck=true
 
           echo "Locating and packaging generated APK..."
           find . -name "*.apk" -type f
