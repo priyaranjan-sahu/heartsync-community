@@ -210,7 +210,7 @@ jobs:
           echo "Compiling Standalone Android Test APK..."
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon -Pkotlin.compiler.suppressKotlinVersionCompatibilityCheck=true
 
           echo "Locating and packaging generated APK..."
           find . -name "*.apk" -type f
