@@ -191,17 +191,18 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Setup Android SDK Environment
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_android_apk != 'false' }}
-        uses: android-actions/setup-android@v3
-
       - name: Build Android Test APK
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.build_android_apk != 'false' }}
         working-directory: ./workspace/mobile
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
           echo "Installing mobile client dependencies..."
           npm install
           mkdir -p ../../artifacts
+
+          echo "Accepting Android SDK licenses..."
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
           echo "Prebuilding native Android Gradle project via Expo..."
           npx expo prebuild --platform android --clean
